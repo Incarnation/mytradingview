@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import ky from 'ky';
-import { DataModeType, DexGexType, NumberRange, OptionsInnerData, SearchTickerItem, TradierOptionData } from './types';
+import { DataModeType, DexGexType, NumberRange, OptionsInnerData, OptionsPricingDataResponse, SearchTickerItem, TradierOptionData } from './types';
 import { calculateHedging, getCalculatedStrikes } from './dgHedgingHelper';
 import dayjs from 'dayjs';
 import { useLocalStorage } from '@uidotdev/usehooks';
-import { getHistoricalOptionExposure, getLiveCboeOptionExposure, ExposureDataResponse, searchTicker, getEmaDataForExpsoure } from './mzDataService';
+import { getHistoricalOptionExposure, getLiveCboeOptionExposure, ExposureDataResponse, searchTicker, getEmaDataForExpsoure, getOptionsPricing } from './mzDataService';
 
 export const useMyStockList = (initialState: SearchTickerItem[] | undefined) => {
     const [mytickers, setMyTickers] = useState<SearchTickerItem[]>(initialState || []);
@@ -30,10 +30,6 @@ export const useMyStockList = (initialState: SearchTickerItem[] | undefined) => 
 }
 
 
-type OptionsData = {
-    currentPrice: number,
-    options: Record<string, OptionsInnerData>
-}
 export type OptionsHedgingDataset = { strike: number, [x: string]: number; }
 
 export type GammaDeltaDatasetType = {
@@ -61,7 +57,7 @@ export type OptionsHedgingData = {
 }
 
 export const useOptionTracker = (symbol: string) => {
-    const [data, setOd] = useState<OptionsData>();
+    const [data, setOd] = useState<OptionsPricingDataResponse>();
     const [isLoading, setIsLoading] = useState(true);
     const [targetPrice, setTargetPrice] = useState(0);
     const [costBasis, setCostBasis] = useState(0);
@@ -69,16 +65,16 @@ export const useOptionTracker = (symbol: string) => {
 
     useEffect(() => {
         setIsLoading(true);
-        ky(`/api/symbols/${symbol}/options/analyze`).json<OptionsData>().then(r => {
+        ky(`/api/symbols/${symbol}/options/analyze`).json<OptionsPricingDataResponse>().then(r => {
             setOd(r);
-            const { currentPrice } = r;
+            const { spotPrice: currentPrice } = r;
             const thresholdValue = currentPrice * 0.1;
             setStrikePriceRange({
                 start: Math.round(currentPrice - thresholdValue),
                 end: Math.round(currentPrice + thresholdValue)
             });
-            setTargetPrice(r.currentPrice);
-            setCostBasis(r.currentPrice);
+            setTargetPrice(r.spotPrice);
+            setCostBasis(r.spotPrice);
         }).finally(() => setIsLoading(false));
     }, [symbol]);
     return { data, isLoading, strikePriceRange, setStrikePriceRange, targetPrice, setTargetPrice, costBasis, setCostBasis };
@@ -467,12 +463,13 @@ const getLiveTradierOptionExposure = async (symbol: string) => {
     return await ky(`/api/symbols/${symbol}/options/exposure`).json<ExposureDataResponse>();
 }
 
-export const useOptionExposure = (symbol: string, dte: number, strikeCount: number, chartType: DexGexType, dataMode: DataModeType, dt: string) => {
+export const useOptionExposure = (symbol: string, dte: number, selectedExpirations: string[], strikeCount: number, chartType: DexGexType, dataMode: DataModeType, dt: string) => {
     const [rawExposureResponse, setRawExposureResponse] = useState<ExposureDataResponse>();
     const [exposureData, setExposureData] = useState<ExposureDataType>();
     const [isLoaded, setLoaded] = useState(false);
     const [hasError, setHasError] = useState(false);
     const [cacheStore, setCache] = useState<Record<string, ExposureDataResponse>>({});
+    const expirationData = rawExposureResponse?.data.map(({ dte, expiration }) => ({ dte, expiration })) || [];
     // const [emaData, setEmaData] = useState<{ ema9d: number, ema21d: number }>();
 
     // useEffect(() => {
@@ -502,7 +499,7 @@ export const useOptionExposure = (symbol: string, dte: number, strikeCount: numb
     useEffect(() => {
         if (!rawExposureResponse) return;
         const start = performance.now();
-        const filteredData = rawExposureResponse.data.filter(j => j.dte <= dte);
+        const filteredData = dte > 0 ? rawExposureResponse.data.filter(j => j.dte <= dte) : rawExposureResponse.data.filter(j => selectedExpirations.includes(j.expiration));
         const expirations = filteredData.map(j => j.expiration);
 
         const allAvailableStikesForFilteredExpirations = filteredData.reduce((prev, c) => {
@@ -519,16 +516,15 @@ export const useOptionExposure = (symbol: string, dte: number, strikeCount: numb
                 const callWallMap = {} as Record<string, number>;
                 const putWallMap = {} as Record<string, number>;
 
-                filteredData.forEach(k=> {
-                    k.strikes.forEach((s, ix)=> {
+                filteredData.forEach(k => {
+                    k.strikes.forEach((s, ix) => {
                         const strike = Number(s);
                         callWallMap[strike] = (callWallMap[strike] || 0) + k.call.absGamma[ix]
                         putWallMap[strike] = (putWallMap[strike] || 0) + k.put.absGamma[ix]
                     })
                 })
-
-                exposureDataValue.callWall = Object.keys(callWallMap).reduce((a, b) => callWallMap[a] > callWallMap[b] ? a : b);
-                exposureDataValue.putWall = Object.keys(putWallMap).reduce((a, b) => putWallMap[a] > putWallMap[b] ? a : b);
+                exposureDataValue.callWall = Object.keys(callWallMap).reduce((a, b) => callWallMap[a] > callWallMap[b] ? a : b, "");
+                exposureDataValue.putWall = Object.keys(putWallMap).reduce((a, b) => putWallMap[a] > putWallMap[b] ? a : b, "");
 
                 exposureDataValue.items = filteredData.map(j => {
                     return {
@@ -578,10 +574,38 @@ export const useOptionExposure = (symbol: string, dte: number, strikeCount: numb
         setExposureData(exposureDataValue);
         const end = performance.now();
         console.log(`exposure-calculation took ${end - start}ms`);
-    }, [rawExposureResponse, chartType, dte, strikeCount]);
+    }, [rawExposureResponse, chartType, dte, strikeCount, selectedExpirations]);
 
-    return { exposureData, isLoaded, hasError
+    return {
+        exposureData, isLoaded, hasError, expirationData
         // , emaData
 
-     };
+    };
 }
+
+export const useOptionTrackerV2 = (symbol: string) => {
+    const [data, setOd] = useState<OptionsPricingDataResponse>();
+    const [isLoading, setIsLoading] = useState(true);
+    const [targetPrice, setTargetPrice] = useState(0);
+    const [costBasis, setCostBasis] = useState(0);
+    const [strikePriceRange, setStrikePriceRange] = useState<NumberRange>({ start: 0, end: Number.MAX_VALUE });
+
+    useEffect(() => {
+        setIsLoading(true);
+
+        getOptionsPricing(symbol).then(r => {
+            setOd(r);
+            const { spotPrice } = r;
+            const thresholdValue = spotPrice * 0.1;
+            setStrikePriceRange({
+                start: Math.round(spotPrice - thresholdValue),
+                end: Math.round(spotPrice + thresholdValue)
+            });
+            setTargetPrice(spotPrice);
+            setCostBasis(spotPrice);
+        }).finally(() => setIsLoading(false));
+    }, [symbol]);
+    return { data, isLoading, strikePriceRange, setStrikePriceRange, targetPrice, setTargetPrice, costBasis, setCostBasis };
+}
+
+
