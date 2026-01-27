@@ -17,7 +17,7 @@ export interface ITradeView extends Trade {
 }
 
 export type StockPriceData = {
-  item: SearchTickerItem,
+  symbol: string,
   quoteSummary: {
     marketState: 'POST' | 'REGULAR' | 'POSTPOST' | 'PRE',
     hasPrePostMarketData: boolean,
@@ -199,6 +199,8 @@ export type OIReportDataResponse = {
 
 export type OIExpirationsDataResponse = {
   expiration: string;
+  strikes: number[];
+  isMonthly: boolean;
 }
 
 export type OptionGreeksSummaryBySymbolResponse = {

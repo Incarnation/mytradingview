@@ -1,14 +1,9 @@
 import { Navigation } from "@toolpad/core/AppProvider";
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import DescriptionIcon from '@mui/icons-material/Description';
-import LayersIcon from '@mui/icons-material/Layers';
 import HomeIcon from '@mui/icons-material/Home';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import TocIcon from '@mui/icons-material/Toc';
 import InsightsIcon from '@mui/icons-material/Insights';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import ElectricBoltIcon from '@mui/icons-material/ElectricBolt';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -17,7 +12,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import TimelineIcon  from '@mui/icons-material/Timeline';
 import BorderVerticalIcon  from '@mui/icons-material/BorderVertical';
 // or
-import ReportProblemIcon from '@mui/icons-material/ReportProblem';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 
 const pages = [
     { title: 'Home', href: '/' },
@@ -59,6 +54,12 @@ export const NAVIGATION: Navigation = [
         title: 'Pricing',
         icon: <AttachMoneyIcon />,
         pattern: 'options/pricing{/:symbol}*'
+    },
+    {
+        segment: 'options/iv',
+        title: 'IV',
+        icon: <ElectricBoltIcon />,
+        pattern: 'options/iv'
     },
     {
         kind: 'divider',
@@ -111,3 +112,20 @@ export const NAVIGATION: Navigation = [
         icon: <CalculateIcon />,
     },
 ];
+
+export const ADMIN_NAVIGATION: Navigation = NAVIGATION.concat([
+    {
+        kind: 'header',
+        title: 'Admin',
+    },
+    {
+        segment: 'admin/contacts',
+        title: 'Contacts',
+        icon: <FunctionsIcon />,
+    },
+    {
+        segment: 'admin/live-tracker',
+        title: 'Live Tracker',
+        icon: <TrackChangesIcon />,
+    }
+]);
